@@ -1,0 +1,99 @@
+import processing.serial.*;
+
+Serial mySerial;
+
+int nl = 10;  // Newline character for end of string
+String string = null;
+float angle, distance;  // Two float values for angle and distance
+
+// Arrays to store the last 10000 points in Cartesian coordinates (x, y)
+float[] xPoints = new float[10000];
+float[] yPoints = new float[10000];
+int index = 0;
+
+int saveInterval = 15000;  // 15 seconds in milliseconds
+int lastSavedTime = 0;  // Time when the last frame was saved
+
+void setup() {
+  size(800, 800);  // Window size
+  
+  // Initialize the serial port
+  String myPort = Serial.list()[1];  // Ensure the correct port index
+  mySerial = new Serial(this, myPort, 115200);
+  
+  // Fill the arrays with zeros to avoid nulls
+  for (int i = 0; i < xPoints.length; i++) {
+    xPoints[i] = 0.0;
+    yPoints[i] = 0.0;
+  }
+}
+
+void draw() {
+  background(0);  // Black background
+  
+  // Read data from serial when available
+  while (mySerial.available() > 0) {
+    string = mySerial.readStringUntil(nl);
+    
+    if (string != null) {
+      string = trim(string);  // Remove any extra whitespace
+      println("Received: " + string);  // Print received value
+      
+      try {
+        // Split the string by comma to get angle and distance
+        String[] parts = split(string, ',');
+        
+        if (parts.length == 2) {
+          // Parse the two float values (angle in degrees and distance in millimeters)
+          angle = Float.parseFloat(parts[0]);
+          distance = Float.parseFloat(parts[1]);
+          
+          // Convert angle to radians for trigonometry
+          float angleInRadians = radians(angle);
+
+          // Convert polar coordinates (angle, distance) to Cartesian coordinates (x, y)
+          float x = cos(angleInRadians) * distance;
+          float y = sin(angleInRadians) * distance;
+
+          // Store the Cartesian coordinates in the arrays
+          xPoints[index] = x;
+          yPoints[index] = y;
+          
+          // Update the index in a circular buffer style
+          index = (index + 1) % xPoints.length;
+        } else {
+          println("Unexpected data format: " + string);
+        }
+      } 
+      catch (NumberFormatException e) {
+        println("Error parsing float: " + string);
+      }
+    }
+  }
+
+  // Visualize the data in a top-down 2D view
+  visualizeData();
+
+  // Save the frame every 15 seconds
+  if (millis() - lastSavedTime > saveInterval) {
+    saveFrame("map-####.png");  // Saves the frame as "map-0001.png", "map-0002.png", etc.
+    println("Map saved.");
+    lastSavedTime = millis();  // Reset the last saved time
+  }
+}
+
+void visualizeData() {
+  stroke(255);  // White strokes for points
+  fill(255);
+
+  // Translate to the center of the screen (treat as the LIDAR origin)
+  translate(width / 2, height / 2);
+
+  // Plot each point from the stored (x, y) values
+  for (int i = 0; i < xPoints.length; i++) {
+    float x = map(xPoints[i], -1000, 1000, -width / 2, width / 2);  // Adjust range to fit screen
+    float y = map(yPoints[i], -1000, 1000, -height / 2, height / 2);  // Adjust range to fit screen
+
+    ellipse(x, y, 5, 5);  // Draw a small circle at each point
+  }
+}
